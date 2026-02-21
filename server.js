@@ -17,6 +17,7 @@ app.use(
     allowedHeaders: ["Content-Type"],
   }),
 );
+app.options("*", cors()); // ✅ Handles preflight properly
 app.use(express.json({ limit: "10mb" })); // Increased limit to handle the HTML attachment
 
 // Setup Email Transporter
@@ -303,4 +304,6 @@ app.post("/send-weekly-backup", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
