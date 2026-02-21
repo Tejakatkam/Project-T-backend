@@ -5,9 +5,13 @@ const nodemailer = require("nodemailer");
 
 const app = express();
 
-// Middleware
-
+// ✅ Enable CORS properly
 app.use(cors());
+
+// ✅ VERY IMPORTANT: manually allow OPTIONS
+app.options("/send-reminder", cors());
+
+// ✅ Parse JSON
 app.use(express.json());
 // Setup Email Transporter
 const transporter = nodemailer.createTransport({
