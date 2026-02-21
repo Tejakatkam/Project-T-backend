@@ -14,6 +14,9 @@ app.options("/send-reminder", cors());
 // ✅ Parse JSON
 app.use(express.json());
 // Setup Email Transporter
+app.get("/", (req, res) => {
+  res.send("Backend is running");
+});
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -297,6 +300,7 @@ app.post("/send-weekly-backup", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
