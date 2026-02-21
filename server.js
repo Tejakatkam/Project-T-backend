@@ -8,7 +8,7 @@ const app = express();
 // Middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://project-t-frontend.vercel.app"],
+    origin: ["https://project-t-frontend.vercel.app"],
   }),
 );
 app.use(express.json({ limit: "10mb" })); // Increased limit to handle the HTML attachment
