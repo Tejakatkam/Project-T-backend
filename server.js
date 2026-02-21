@@ -6,12 +6,14 @@ const nodemailer = require("nodemailer");
 const app = express();
 
 // ✅ Enable CORS properly
-app.use(cors());
+app.use(
+  cors({
+    origin: "*", // allow all for now (we can restrict later)
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  }),
+);
 
-// ✅ VERY IMPORTANT: manually allow OPTIONS
-app.options("/send-reminder", cors());
-
-// ✅ Parse JSON
 app.use(express.json());
 // Setup Email Transporter
 app.get("/", (req, res) => {
