@@ -7,19 +7,19 @@ const app = express();
 
 // Middleware
 
+const cors = require("cors");
+
 app.use(
   cors({
     origin: [
       "http://localhost:5173",
       "https://trackly-jajmj0qqf-katkam-tejas-projects.vercel.app",
     ],
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type"],
   }),
 );
-app.options("*", cors()); // ✅ Handles preflight properly
-app.use(express.json({ limit: "10mb" })); // Increased limit to handle the HTML attachment
-
+app.use(express.json());
 // Setup Email Transporter
 const transporter = nodemailer.createTransport({
   service: "gmail",
