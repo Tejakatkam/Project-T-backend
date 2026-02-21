@@ -9,8 +9,8 @@ const app = express();
 app.use(cors());
 
 // ✅ Parse JSON
-app.use(express.json());
-// HEALTH CHECK: This lets you open the URL in your browser to see if it works
+// ✅ Parse JSON (Increased limit for the HTML attachment)
+app.use(express.json({ limit: "10mb" })); // HEALTH CHECK: This lets you open the URL in your browser to see if it works
 app.get("/", (req, res) => {
   res.send("LifeTrack Backend is successfully running! 🚀");
 });
