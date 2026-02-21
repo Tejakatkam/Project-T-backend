@@ -10,9 +10,9 @@ app.use(cors());
 
 // ✅ Parse JSON
 app.use(express.json());
-// Setup Email Transporter
+// HEALTH CHECK: This lets you open the URL in your browser to see if it works
 app.get("/", (req, res) => {
-  res.send("Backend is running");
+  res.send("LifeTrack Backend is successfully running! 🚀");
 });
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -296,8 +296,8 @@ app.post("/send-weekly-backup", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 5000;
+// Added "0.0.0.0" to ensure Railway can connect to it properly
+app.listen(PORT, "0.0.0.0", () =>
+  console.log(`Server running on port ${PORT}`),
+);
