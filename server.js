@@ -6,14 +6,9 @@ const nodemailer = require("nodemailer");
 const app = express();
 
 // ✅ Enable CORS properly
-app.use(
-  cors({
-    origin: "*", // allow all for now (we can restrict later)
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  }),
-);
+app.use(cors());
 
+// ✅ Parse JSON
 app.use(express.json());
 // Setup Email Transporter
 app.get("/", (req, res) => {
