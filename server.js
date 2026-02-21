@@ -7,16 +7,7 @@ const app = express();
 
 // Middleware
 
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://trackly-jajmj0qqf-katkam-tejas-projects.vercel.app",
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type"],
-  }),
-);
+app.use(cors());
 app.use(express.json());
 // Setup Email Transporter
 const transporter = nodemailer.createTransport({
