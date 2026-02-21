@@ -6,9 +6,15 @@ const nodemailer = require("nodemailer");
 const app = express();
 
 // Middleware
+
 app.use(
   cors({
-    origin: ["https://project-t-frontend.vercel.app"],
+    origin: [
+      "http://localhost:5173",
+      "https://trackly-jajmj0qqf-katkam-tejas-projects.vercel.app",
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
   }),
 );
 app.use(express.json({ limit: "10mb" })); // Increased limit to handle the HTML attachment
