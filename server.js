@@ -268,7 +268,7 @@ app.post("/send-weekly-backup", async (req, res) => {
 
   try {
     await resend.emails.send({
-      from: "LifeTrack <onboarding@resend.dev>",
+      from: "onboarding@resend.dev",
       to: to,
       subject: `Your Week ${lastWeekNum} Report & Reset 🗓️`,
       html: resetHtml,
@@ -282,8 +282,14 @@ app.post("/send-weekly-backup", async (req, res) => {
     console.log(`Weekly Backup email sent for Week ${lastWeekNum}!`);
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Failed to send backup:", error);
-    res.status(500).json({ error: "Failed" });
+    console.error("FULL ERROR:", error);
+    if (error.response) {
+      console.error("Resend Response:", error.response);
+    }
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
