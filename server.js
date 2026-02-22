@@ -267,29 +267,18 @@ app.post("/send-weekly-backup", async (req, res) => {
   `;
 
   try {
-    await resend.emails.send({
-      from: "onboarding@resend.dev",
+    const response = await resend.emails.send({
+      from: "LifeTrack <onboarding@resend.dev>",
       to: to,
-      subject: `Your Week ${lastWeekNum} Report & Reset 🗓️`,
-      html: resetHtml,
-      attachments: [
-        {
-          filename: `LifeTrack_Week${lastWeekNum}_Report.html`,
-          content: htmlReport,
-        },
-      ],
+      subject: subject,
+      html: reminderHtml,
     });
-    console.log(`Weekly Backup email sent for Week ${lastWeekNum}!`);
+
+    console.log("Email sent:", response);
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error("FULL ERROR:", error);
-    if (error.response) {
-      console.error("Resend Response:", error.response);
-    }
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    console.error("Failed to send daily reminder:", error);
+    res.status(500).json({ success: false });
   }
 });
 
