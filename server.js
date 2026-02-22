@@ -2,8 +2,7 @@ console.log("🔥 Server file executed");
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const nodemailer = require("nodemailer");
-
+const { Resend } = require("resend");
 const app = express();
 
 // ✅ Enable CORS properly
@@ -15,13 +14,7 @@ app.use(express.json({ limit: "10mb" })); // HEALTH CHECK: This lets you open th
 app.get("/", (req, res) => {
   res.send("LifeTrack Backend is successfully running! 🚀");
 });
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ============================================================================
 // ROUTE 1: DAILY HABIT REMINDERS (Triggers at specific times)
@@ -108,11 +101,10 @@ app.post("/send-reminder", async (req, res) => {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"life·track" <${process.env.EMAIL_USER}>`,
+    await resend.emails.send({
+      from: "LifeTrack <onboarding@resend.dev>",
       to: to,
       subject: subject,
-      text: text,
       html: reminderHtml,
     });
     console.log("Daily Reminder email sent: " + info.response);
@@ -275,8 +267,8 @@ app.post("/send-weekly-backup", async (req, res) => {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"life·track" <${process.env.EMAIL_USER}>`,
+    await resend.emails.send({
+      from: "LifeTrack <onboarding@resend.dev>",
       to: to,
       subject: `Your Week ${lastWeekNum} Report & Reset 🗓️`,
       html: resetHtml,
@@ -284,7 +276,6 @@ app.post("/send-weekly-backup", async (req, res) => {
         {
           filename: `LifeTrack_Week${lastWeekNum}_Report.html`,
           content: htmlReport,
-          contentType: "text/html",
         },
       ],
     });
