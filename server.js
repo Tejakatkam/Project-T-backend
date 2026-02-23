@@ -49,7 +49,12 @@ setInterval(async () => {
     ":" +
     now.getMinutes().toString().padStart(2, "0");
 
+  console.log("⏳ Checking reminders at:", currentTime);
+  console.log("Current reminders:", reminders);
+
   reminders.forEach(async (reminder) => {
+    console.log("Comparing:", reminder.time, "with", currentTime);
+
     if (reminder.time === currentTime) {
       if (reminder.lastSent === currentTime) return;
 
@@ -63,13 +68,13 @@ setInterval(async () => {
           html: `<h2>Time for ${reminder.habitName}</h2>`,
         });
 
-        console.log("Reminder sent to:", reminder.email);
+        console.log("✅ Reminder sent to:", reminder.email);
       } catch (err) {
-        console.error("Reminder failed:", err);
+        console.error("❌ Reminder failed:", err);
       }
     }
   });
-}, 60000); // every 1 minute
+}, 60000);
 
 /* ============================================================
    📧 MANUAL SEND ROUTE (Keep Your Original Feature)
