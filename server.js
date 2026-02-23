@@ -310,7 +310,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { Resend } = require("resend");
-const fs = require("fs"); // Added for the background database
+const fs = require("fs");
 
 const app = express();
 
@@ -320,7 +320,7 @@ app.use(cors());
 // ✅ Parse JSON (Increased limit for the HTML attachment)
 app.use(express.json({ limit: "10mb" }));
 
-// HEALTH CHECK
+// HEALTH CHECK: This lets you open the URL in your browser to see if it works
 app.get("/", (req, res) => {
   res.send("LifeTrack Backend is successfully running! 🚀");
 });
@@ -348,15 +348,16 @@ app.post("/sync-schedule", (req, res) => {
   if (!email) return res.status(400).json({ error: "Email required" });
 
   userSchedules[email] = { timezone, reminders, weeklyTasks };
+
+  // Save to file so it survives server restarts
   fs.writeFileSync(DB_FILE, JSON.stringify(userSchedules, null, 2));
 
   res.status(200).json({ success: true, message: "Schedule Synced!" });
 });
 
 // ============================================================================
-// 2. THE 24/7 BACKGROUND CLOCK
+// 2. THE 24/7 BACKGROUND CLOCK (Sends Daily & Weekly Task Reminders)
 // ============================================================================
-// Helper function to send the exact reminder template you designed
 async function sendScheduledEmail(to, subject, text, cleanHeading) {
   const reminderHtml = `
 <!DOCTYPE html>
@@ -434,26 +435,26 @@ async function sendScheduledEmail(to, subject, text, cleanHeading) {
   `;
 
   try {
-    await resend.emails.send({
+    const response = await resend.emails.send({
       from: "LifeTrack <onboarding@resend.dev>",
       to: to,
       subject: subject,
       html: reminderHtml,
     });
-    console.log(`Auto-Email sent to ${to} for ${subject}`);
+    console.log(`Auto-Email sent to ${to} for ${subject} | ID:`, response.id);
   } catch (error) {
     console.error("Failed to send auto-email:", error);
   }
 }
 
-// The Background Clock (Ticks every 10 seconds)
+// Background Clock Ticks Every 10 Seconds
 let lastCheckedMinute = "";
 
 setInterval(() => {
   const now = new Date();
   const currentMinute = now.toISOString().slice(0, 16);
 
-  if (currentMinute === lastCheckedMinute) return;
+  if (currentMinute === lastCheckedMinute) return; // Ensure it only sends once per minute
   lastCheckedMinute = currentMinute;
 
   Object.entries(userSchedules).forEach(([email, data]) => {
@@ -508,11 +509,12 @@ setInterval(() => {
 }, 10000);
 
 // ============================================================================
-// 3. WEEKLY BACKUP & RESET (Triggers on Monday mornings)
+// 3. WEEKLY BACKUP & RESET ROUTE
 // ============================================================================
 app.post("/send-weekly-backup", async (req, res) => {
   const { to, htmlReport } = req.body;
 
+  // Dynamic Date Calculations
   const today = new Date();
   const currentDay = today.getDay() || 7;
   const prevSun = new Date(today);
@@ -536,7 +538,6 @@ app.post("/send-weekly-backup", async (req, res) => {
   );
   const lastWeekNum = currentWeekNum - 1;
 
-  // I have included your exact dark mode template here
   const resetHtml = `
 <!DOCTYPE html>
 <html lang="en">
@@ -664,7 +665,6 @@ app.post("/send-weekly-backup", async (req, res) => {
       to: to,
       subject: `Your Week ${lastWeekNum} Report & Reset 🗓️`,
       html: resetHtml,
-      // I added the correct Resend attachment syntax here so your file actually attaches!
       attachments: [
         {
           filename: `LifeTrack_Week${lastWeekNum}_Report.html`,
@@ -673,7 +673,7 @@ app.post("/send-weekly-backup", async (req, res) => {
       ],
     });
 
-    console.log("Weekly Backup Email sent:", response);
+    console.log("Weekly Backup Email sent:", response.id);
     res.status(200).json({ success: true });
   } catch (error) {
     console.error("Failed to send backup:", error);
@@ -681,8 +681,8 @@ app.post("/send-weekly-backup", async (req, res) => {
   }
 });
 
-// IMPORTANT: Uses 0.0.0.0 to prevent Railway 502 connection refused errors!
 const PORT = process.env.PORT || 8080;
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log("🚀 Server running on port", PORT);
 });
