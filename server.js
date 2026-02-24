@@ -224,18 +224,13 @@ async function sendScheduledEmail(to, subject, text, cleanHeading) {
   `;
 
   try {
-    const { data, error } = await resend.emails.send({
+    const response = await resend.emails.send({
       from: "LifeTrack <onboarding@resend.dev>",
       to: to,
       subject: subject,
       html: reminderHtml,
     });
-
-    if (error) {
-      console.error("Resend API Error:", error);
-    } else {
-      console.log(`Auto-Email sent to ${to} for ${subject} | ID:`, data.id);
-    }
+    console.log(`Auto-Email sent to ${to} for ${subject} | ID:`, response.id);
   } catch (error) {
     console.error("Failed to send auto-email:", error);
   }
@@ -460,7 +455,7 @@ app.post("/send-weekly-backup", async (req, res) => {
   `;
 
   try {
-    const { data, error } = await resend.emails.send({
+    const response = await resend.emails.send({
       from: "LifeTrack <onboarding@resend.dev>",
       to: to,
       subject: `Your Week ${lastWeekNum} Report & Reset 🗓️`,
@@ -473,13 +468,8 @@ app.post("/send-weekly-backup", async (req, res) => {
       ],
     });
 
-    if (error) {
-      console.error("Resend API Error (Weekly):", error);
-      res.status(500).json({ success: false });
-    } else {
-      console.log("Weekly Backup Email sent:", data.id);
-      res.status(200).json({ success: true });
-    }
+    console.log("Weekly Backup Email sent:", response.id);
+    res.status(200).json({ success: true });
   } catch (error) {
     console.error("Failed to send backup:", error);
     res.status(500).json({ success: false });
