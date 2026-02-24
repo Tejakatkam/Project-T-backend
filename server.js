@@ -251,6 +251,8 @@ setInterval(() => {
   if (currentMinute === lastCheckedMinute) return;
   lastCheckedMinute = currentMinute;
 
+  console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
+
   // IMPORTANT: Now iterating over schedulesDB instead of userSchedules
   Object.entries(schedulesDB).forEach(([email, data]) => {
     try {
@@ -267,9 +269,14 @@ setInterval(() => {
         weekday: "long",
       });
 
+      console.log(
+        `👉 Checking user: ${email} | Calculated Time: ${userTimeStr}`,
+      );
+
       // Check Daily Habit Timers
       (data.reminders || []).forEach((r) => {
         (r.timers || []).forEach((t) => {
+          console.log(`   - Comparing with saved timer: ${t.time}`);
           if (t.time === userTimeStr) {
             sendScheduledEmail(
               email,
