@@ -13,11 +13,18 @@ app.get("/", (req, res) => {
 });
 
 // 1. CONFIGURE GMAIL TRANSPORTER
+// 1. CONFIGURE GMAIL TRANSPORTER (EXPLICIT SMTP)
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // Use SSL/TLS
   auth: {
-    user: process.env.GMAIL_USER, // Your Gmail (e.g., teja@gmail.com)
-    pass: process.env.GMAIL_PASS, // Your 16-letter App Password
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
+  },
+  // Add this to prevent connection drops in cloud environments
+  tls: {
+    rejectUnauthorized: false,
   },
 });
 
