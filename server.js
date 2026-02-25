@@ -18,6 +18,7 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_PASS,
   },
 });
+
 // ✅ Enable CORS properly
 app.use(cors());
 
@@ -25,8 +26,13 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 // HEALTH CHECK: This lets you open the URL in your browser to see if it works
+// app.get("/", (req, res) => {
+//   res.send("LifeTrack Backend is successfully running! 🚀");
+// });
+
+// --- HEALTH CHECK ROUTE FOR RAILWAY ---
 app.get("/", (req, res) => {
-  res.send("LifeTrack Backend is successfully running! 🚀");
+  res.status(200).send("✅ LifeTrack Backend is awake and healthy!");
 });
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -588,27 +594,27 @@ app.post("/send-weekly-backup", async (req, res) => {
   }
 });
 
-// const PORT = process.env.PORT || 8080;
-
-// app.listen(PORT, "0.0.0.0", () => {
-//   console.log("🚀 Server running on port", PORT);
-//   initDB();
-// });
-
-// --- SERVER STARTUP ---
-// 1. Grab the port Railway gives us, or use 8080 locally
 const PORT = process.env.PORT || 8080;
 
-// 2. Start the server INSTANTLY so Railway passes the network check.
-// Using '0.0.0.0' is required by Railway to route traffic properly.
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server successfully awake and listening on port ${PORT}`);
-
-  // 3. Initialize the database AFTER the server is already running
-  initDB().catch((err) => {
-    console.error(
-      "Database connection failed, but server is still up:",
-      err.message,
-    );
-  });
+  console.log("🚀 Server running on port", PORT);
+  initDB();
 });
+
+// // --- SERVER STARTUP ---
+// // 1. Grab the port Railway gives us, or use 8080 locally
+// const PORT = process.env.PORT || 8080;
+
+// // 2. Start the server INSTANTLY so Railway passes the network check.
+// // Using '0.0.0.0' is required by Railway to route traffic properly.
+// app.listen(PORT, "0.0.0.0", () => {
+//   console.log(`🚀 Server successfully awake and listening on port ${PORT}`);
+
+//   // 3. Initialize the database AFTER the server is already running
+//   initDB().catch((err) => {
+//     console.error(
+//       "Database connection failed, but server is still up:",
+//       err.message,
+//     );
+//   });
+// });
