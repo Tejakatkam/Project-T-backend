@@ -279,7 +279,6 @@ async function sendScheduledEmail(to, subject, text, cleanHeading) {
 // Background Clock Ticks Every 10 Seconds
 let lastCheckedMinute = "";
 
-// Background Clock Ticks Every 10 Seconds
 setInterval(async () => {
   const now = new Date();
   const currentMinute = now.toISOString().slice(0, 16);
@@ -290,13 +289,12 @@ setInterval(async () => {
   console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
 
   try {
-    // 🔥 FIX: You must actually fetch the data from MySQL first!
-    const [schedulesFromDB] = await db.execute("SELECT * FROM schedules");
+    // 🔥 FETCH FRESH DATA FROM MYSQL
+    const [rows] = await db.execute("SELECT * FROM schedules");
 
-    schedulesFromDB.forEach(async (data) => {
+    rows.forEach(async (data) => {
       if (!data.timezone) return;
 
-      // Converts server time into User's local timezone
       const userTimeStr = now.toLocaleTimeString("en-US", {
         timeZone: data.timezone,
         hour12: false,
@@ -309,7 +307,7 @@ setInterval(async () => {
         weekday: "long",
       });
 
-      // 🔥 FIX: MySQL stores JSON as strings, so we must parse them
+      // 🔥 PARSE JSON STRINGS FROM MYSQL
       const reminders =
         typeof data.reminders === "string"
           ? JSON.parse(data.reminders)
@@ -350,7 +348,7 @@ setInterval(async () => {
       });
     });
   } catch (err) {
-    console.error("Error in background clock:", err);
+    console.error("❌ Background Clock Error:", err.message);
   }
 }, 10000);
 
