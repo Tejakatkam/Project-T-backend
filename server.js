@@ -115,37 +115,59 @@ app.post("/verify-signup", (req, res) => {
 });
 
 // LOGIN
+// LOGIN (Upgraded: Accepts Email OR Username)
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
-  const lowerEmail = email.toLowerCase().trim();
+  // 'email' might actually be the username typed by the user
+  const loginIdentifier = email ? email.toLowerCase().trim() : "";
 
-  if (!lowerEmail || !password) {
+  if (!loginIdentifier || !password) {
     return res
       .status(400)
-      .json({ success: false, error: "Email and password required" });
+      .json({ success: false, error: "Username/Email and password required" });
   }
 
-  const user = usersDB[lowerEmail];
+  // 1. Try to find the user by Email first
+  let user = usersDB[loginIdentifier];
+  let userEmail = loginIdentifier;
 
+  // 2. If not found by Email, search the database by Username
+  if (!user) {
+    const foundEntry = Object.entries(usersDB).find(
+      ([dbEmail, dbUser]) =>
+        dbUser.username && dbUser.username.toLowerCase() === loginIdentifier,
+    );
+
+    if (foundEntry) {
+      userEmail = foundEntry[0]; // The actual email
+      user = foundEntry[1]; // The user data
+    }
+  }
+
+  // 3. If STILL not found, the account doesn't exist (or Railway wiped it)
   if (!user) {
     return res
       .status(404)
       .json({ success: false, error: "User not found. Please sign up." });
   }
-  if (user.pass !== password) {
+
+  // 4. Safely verify the password
+  const storedPassword = user.password || user.pass;
+  if (storedPassword !== password) {
     return res
       .status(401)
       .json({ success: false, error: "Incorrect password." });
   }
 
-  const userSchedule = schedulesDB[lowerEmail] || {};
+  // 5. Success! Log them in.
+  const userSchedule = schedulesDB[userEmail] || {};
 
   res.status(200).json({
     success: true,
     message: "Login successful!",
     userData: {
       username: user.username,
-      email: lowerEmail,
+      email: userEmail,
       reminders: userSchedule.reminders || [],
       weeklyTasks: userSchedule.weeklyTasks || [],
     },
