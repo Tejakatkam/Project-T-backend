@@ -4,7 +4,8 @@ const express = require("express");
 const cors = require("cors");
 const { Resend } = require("resend");
 const fs = require("fs");
-
+// Add this line near your other 'require' statements
+const mysql = require("mysql2/promise");
 const app = express();
 
 // ✅ Enable CORS properly
