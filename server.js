@@ -4,20 +4,8 @@ const express = require("express");
 const cors = require("cors");
 const { Resend } = require("resend");
 const fs = require("fs");
-// Add this line near your other 'require' statements
-const mysql = require("mysql2/promise");
+
 const app = express();
-
-const nodemailer = require("nodemailer");
-
-// Create the email sender
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS,
-  },
-});
 
 // ✅ Enable CORS properly
 app.use(cors());
@@ -26,228 +14,126 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 // HEALTH CHECK: This lets you open the URL in your browser to see if it works
-// app.get("/", (req, res) => {
-//   res.send("LifeTrack Backend is successfully running! 🚀");
-// });
-
-// --- HEALTH CHECK ROUTE FOR RAILWAY ---
 app.get("/", (req, res) => {
-  res.status(200).send("✅ LifeTrack Backend is awake and healthy!");
+  res.send("LifeTrack Backend is successfully running! 🚀");
 });
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// ==========================================
-// 1. MYSQL CONNECTION POOL
-// ==========================================
-const db = mysql.createPool({
-  host: process.env.MYSQLHOST,
-  user: process.env.MYSQLUSER,
-  password: process.env.MYSQLPASSWORD,
-  database: process.env.MYSQLDATABASE,
-  port: process.env.MYSQLPORT || 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-});
+// ============================================================================
+// 1. SIMPLE DATABASE (Stores schedules so they work when app is closed)
+// ============================================================================
+const USERS_FILE = "./users.json";
+const SCHEDULES_FILE = "./schedules.json";
 
-// Create tables automatically if they don't exist
-const initDB = async () => {
+let usersDB = {};
+let schedulesDB = {};
+
+// Load existing schedules when server starts
+if (fs.existsSync(USERS_FILE)) {
   try {
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(50) NOT NULL UNIQUE,
-        email VARCHAR(100) NOT NULL UNIQUE,
-        password VARCHAR(255) NOT NULL,
-        is_verified BOOLEAN DEFAULT FALSE,
-        otp_code VARCHAR(6),
-        otp_expires_at TIMESTAMP NULL
-      )
-    `);
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS schedules (
-        email VARCHAR(100) PRIMARY KEY,
-        timezone VARCHAR(50),
-        reminders JSON,
-        weeklyTasks JSON
-      )
-    `);
-    console.log("✅ MySQL Tables Ready");
-  } catch (err) {
-    console.error("❌ Database Init Error:", err);
+    usersDB = JSON.parse(fs.readFileSync(USERS_FILE));
+  } catch (e) {
+    console.error("Failed to load users DB");
   }
-};
-initDB();
+}
 
-// --- LOGIN ROUTE ---
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
-
+if (fs.existsSync(SCHEDULES_FILE)) {
   try {
-    const [users] = await db.execute("SELECT * FROM users WHERE username = ?", [
-      username,
-    ]);
-
-    if (users.length === 0) {
-      // This is the 400 error you saw!
-      return res.status(400).json({ success: false, error: "User not found." });
-    }
-
-    const user = users[0];
-
-    // 👇 FIX: Use a simple text comparison instead of bcrypt for now
-    const isMatch = password === user.password;
-
-    if (!isMatch) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Incorrect password." });
-    }
-
-    if (!user.is_verified) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Please verify your email first." });
-    }
-
-    res.json({ success: true, email: user.email });
-  } catch (err) {
-    console.error("Login Database Error:", err);
-    res
-      .status(500)
-      .json({ success: false, error: "Server error during login." });
+    schedulesDB = JSON.parse(fs.readFileSync(SCHEDULES_FILE));
+  } catch (e) {
+    console.error("Failed to load schedules DB");
   }
-});
-// ==========================================
-// 2. AUTHENTICATION (Scenario A, B, C)
-// ==========================================
+}
 
-app.post("/signup", async (req, res) => {
+app.post("/signup", (req, res) => {
   const { username, email, password } = req.body;
 
-  try {
-    // Check for duplicate email (Person C scenario)
-    const [emailCheck] = await db.execute(
-      "SELECT id FROM users WHERE email = ?",
-      [email],
-    );
-    if (emailCheck.length > 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "This email is already registered." });
-    }
-
-    // Check for duplicate username (Person B scenario)
-    const [userCheck] = await db.execute(
-      "SELECT id FROM users WHERE username = ?",
-      [username],
-    );
-    if (userCheck.length > 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "That username is already taken." });
-    }
-
-    // Save to MySQL
-    await db.execute(
-      "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-      [username, email, password], // Note: In production, hash this password!
-    );
-
-    // Initialize schedule
-    await db.execute(
-      "INSERT INTO schedules (email, reminders, weeklyTasks) VALUES (?, '[]', '[]')",
-      [email],
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Account created! Now verify your email.",
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  if (!username || !email || !password) {
+    return res
+      .status(400)
+      .json({ success: false, error: "All fields are required" });
   }
+
+  // Check for duplicate email
+  if (usersDB[email]) {
+    return res
+      .status(400)
+      .json({ success: false, error: "This email is already registered." });
+  }
+
+  // Check for duplicate username
+  const usernameExists = Object.values(usersDB).some(
+    (u) => u.username === username,
+  );
+  if (usernameExists) {
+    return res
+      .status(400)
+      .json({ success: false, error: "That username is already taken." });
+  }
+
+  // Save credentials to usersDB
+  usersDB[email] = { username, password };
+  fs.writeFileSync(USERS_FILE, JSON.stringify(usersDB, null, 2));
+
+  // Initialize an empty schedule in schedulesDB for the new user
+  schedulesDB[email] = { timezone: "", reminders: [], weeklyTasks: [] };
+  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(schedulesDB, null, 2));
+
+  res
+    .status(200)
+    .json({ success: true, message: "Account created successfully!" });
 });
 
-// ==========================================
-// 3. OTP VERIFICATION SYSTEM
-// ==========================================
+app.post("/login", (req, res) => {
+  const { email, password } = req.body;
 
-app.post("/send-otp", async (req, res) => {
-  const { email } = req.body;
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  try {
-    // 1. Save to MySQL
-    await db.execute("UPDATE users SET otp_code = ? WHERE email = ?", [
-      otp,
-      email,
-    ]);
-
-    // 2. Send via Gmail to ANY user
-    const mailOptions = {
-      from: `"LifeTrack App" <${process.env.GMAIL_USER}>`,
-      to: email, // This will now go to ANY email address!
-      subject: "Verify your LifeTrack Account",
-      html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Welcome to LifeTrack!</h2>
-          <p>Your verification code is: <strong style="font-size: 24px; color: #d4af37;">${otp}</strong></p>
-          <p>Please enter this code in the app to complete your registration.</p>
-        </div>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ OTP Email successfully sent to ${email}`);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("❌ Gmail Error:", err);
-    res.status(500).json({ success: false, error: "Failed to send email" });
+  if (!email || !password) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Email and password required" });
   }
-});
 
-app.post("/verify-otp", async (req, res) => {
-  const { email, otp } = req.body;
+  const user = usersDB[email];
 
-  try {
-    const [rows] = await db.execute(
-      "SELECT * FROM users WHERE email = ? AND otp_code = ? AND otp_expires_at > NOW()",
-      [email, otp],
-    );
-
-    if (rows.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Invalid or expired OTP" });
-    }
-
-    await db.execute(
-      "UPDATE users SET is_verified = TRUE, otp_code = NULL WHERE email = ?",
-      [email],
-    );
-    res.json({ success: true, message: "Email verified successfully!" });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  if (!user) {
+    return res
+      .status(404)
+      .json({ success: false, error: "User not found. Please sign up." });
   }
+  if (user.password !== password) {
+    return res
+      .status(401)
+      .json({ success: false, error: "Incorrect password." });
+  }
+
+  // Fetch their application data from schedulesDB
+  const userSchedule = schedulesDB[email] || {};
+
+  res.status(200).json({
+    success: true,
+    message: "Login successful!",
+    userData: {
+      username: user.username,
+      email: email,
+      reminders: userSchedule.reminders || [],
+      weeklyTasks: userSchedule.weeklyTasks || [],
+    },
+  });
 });
 // NEW ROUTE: Frontend silently sends the schedule here whenever it changes
-app.post("/sync-schedule", async (req, res) => {
+app.post("/sync-schedule", (req, res) => {
   const { email, timezone, reminders, weeklyTasks } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
 
-  try {
-    // We use the 'db' pool we created at the top of the file
-    await db.execute(
-      "UPDATE schedules SET timezone = ?, reminders = ?, weeklyTasks = ? WHERE email = ?",
-      [timezone, JSON.stringify(reminders), JSON.stringify(weeklyTasks), email],
-    );
-    res.status(200).json({ success: true, message: "Schedule Synced!" });
-  } catch (err) {
-    console.error("Sync error:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
+  if (!schedulesDB[email]) schedulesDB[email] = {};
+  schedulesDB[email].timezone = timezone;
+  schedulesDB[email].reminders = reminders;
+  schedulesDB[email].weeklyTasks = weeklyTasks;
+  // Save to file so it survives server restarts
+  fs.writeFileSync(DB_FILE, JSON.stringify(userSchedules, null, 2));
+
+  res.status(200).json({ success: true, message: "Schedule Synced!" });
 });
 
 // ============================================================================
@@ -330,96 +216,84 @@ async function sendScheduledEmail(to, subject, text, cleanHeading) {
   `;
 
   try {
-    const mailOptions = {
-      from: `"LifeTrack Reminders" <${process.env.GMAIL_USER}>`,
-      to: toEmail,
+    const response = await resend.emails.send({
+      from: "LifeTrack <onboarding@resend.dev>",
+      to: to,
       subject: subject,
       html: reminderHtml,
-    };
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ Reminder sent to ${toEmail} for ${taskName}`);
-  } catch (err) {
-    console.error(`❌ Failed to send reminder to ${toEmail}:`, err.message);
+    });
+    console.log(`Auto-Email sent to ${to} for ${subject} | ID:`, response.id);
+  } catch (error) {
+    console.error("Failed to send auto-email:", error);
   }
 }
 
-// --- 24/7 BACKGROUND CLOCK ---
+// Background Clock Ticks Every 10 Seconds
 let lastCheckedMinute = "";
 
-setInterval(async () => {
+setInterval(() => {
   const now = new Date();
-  const currentMinute = now.toISOString().slice(0, 16); // e.g., "2026-02-25T09:34"
+  const currentMinute = now.toISOString().slice(0, 16);
 
-  // Only run the check once per minute to prevent spamming duplicate emails
-  if (currentMinute === lastCheckedMinute) return;
+  if (currentMinute === lastCheckedMinute) return; // Ensure it only sends once per minute
   lastCheckedMinute = currentMinute;
 
   console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
 
-  try {
-    // 1. Fetch all user schedules directly from the MySQL database
-    const [rows] = await db.execute("SELECT * FROM schedules");
+  Object.entries(userSchedules).forEach(([email, data]) => {
+    try {
+      if (!data.timezone) return;
 
-    rows.forEach(async (data) => {
-      if (!data.timezone || !data.email) return;
-
-      // 2. Convert server UTC time to this specific user's local timezone
+      // Converts server time into the User's exact local timezone
       const userTimeStr = now.toLocaleTimeString("en-US", {
         timeZone: data.timezone,
         hour12: false,
         hour: "2-digit",
         minute: "2-digit",
       });
-
       const userDayStr = now.toLocaleDateString("en-US", {
         timeZone: data.timezone,
         weekday: "long",
       });
+      console.log(
+        `👉 Checking user: ${email} | Calculated Time: ${userTimeStr}`,
+      );
 
-      // 3. Parse the JSON strings stored in MySQL
-      const reminders =
-        typeof data.reminders === "string"
-          ? JSON.parse(data.reminders)
-          : data.reminders || [];
-      const weeklyTasks =
-        typeof data.weeklyTasks === "string"
-          ? JSON.parse(data.weeklyTasks)
-          : data.weeklyTasks || [];
-
-      // 4. Check Daily Habit Timers
-      reminders.forEach((r) => {
+      // Check Daily Habit Timers
+      (data.reminders || []).forEach((r) => {
         (r.timers || []).forEach((t) => {
+          console.log(`   - Comparing with saved timer: ${t.time}`);
           if (t.time === userTimeStr) {
             sendScheduledEmail(
-              data.email,
+              email,
               `⏰ Time for ${r.habitName}`,
-              t.label || `It is time to complete your ${r.habitName} routine!`,
+              t.label || `Time for your ${r.habitName} routine!`,
               r.habitName,
             );
           }
         });
       });
 
-      // 5. Check Weekly Task Timers
-      weeklyTasks.forEach((task) => {
+      // Check Weekly Task Timers
+      (data.weeklyTasks || []).forEach((task) => {
         if (
           task.day === userDayStr &&
           task.reminderTime === userTimeStr &&
           !task.doneThisWeek
         ) {
           sendScheduledEmail(
-            data.email,
+            email,
             `📋 Weekly Task: ${task.name}`,
-            `Don't forget to complete your weekly task today!`,
+            `Don't forget to complete your task: ${task.name}`,
             task.name,
           );
         }
       });
-    });
-  } catch (err) {
-    console.error("⏱️ Clock Database Error:", err.message);
-  }
-}, 10000); // Ticks every 10 seconds
+    } catch (err) {
+      console.error("Error processing user schedule:", err);
+    }
+  });
+}, 10000);
 
 // ============================================================================
 // 3. WEEKLY BACKUP & RESET ROUTE
@@ -594,16 +468,8 @@ app.post("/send-weekly-backup", async (req, res) => {
   }
 });
 
-// --- SERVER STARTUP ---
 const PORT = process.env.PORT || 8080;
 
-// 1. Start the server INSTANTLY. Do not wait for the database!
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server successfully awake and listening on port ${PORT}`);
-
-  // 2. NOW call the database connection in the background.
-  // We use .catch() to handle errors without crashing the server startup.
-  initDB().catch((err) => {
-    console.error("❌ Database connection failed during startup:", err);
-  });
+  console.log("🚀 Server running on port", PORT);
 });
