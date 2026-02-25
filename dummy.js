@@ -1,35 +1,41 @@
 console.log("🔥 Server file executed");
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 const fs = require("fs");
-require("dotenv").config();
 
 const app = express();
+
+// ✅ Enable CORS properly
 app.use(cors());
+
+// ✅ Parse JSON
 app.use(express.json({ limit: "10mb" }));
-app.get("/", (req, res) => {
-  res.send("LifeTrack Backend is successfully running! 🚀");
-});
 
 // 1. CONFIGURE GMAIL TRANSPORTER
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.GMAIL_USER, // Your Gmail (e.g., teja@gmail.com)
-    pass: process.env.GMAIL_PASS, // Your 16-letter App Password
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
   },
 });
 
+// HEALTH CHECK
+app.get("/", (req, res) => {
+  res.send("LifeTrack Backend (OTP Version) is successfully running! 🚀");
+});
+
 // ============================================================================
-// 1. SIMPLE DATABASE (Stores schedules so they work when app is closed)
+// 1. DATABASE & OTP STORAGE
 // ============================================================================
 const USERS_FILE = "./users.json";
 const SCHEDULES_FILE = "./schedules.json";
 
 let usersDB = {};
 let schedulesDB = {};
-let tempOTPs = {};
+let tempOTPs = {}; // Temporarily stores OTPs before account creation
 
 // Load existing schedules when server starts
 if (fs.existsSync(USERS_FILE)) {
@@ -39,7 +45,6 @@ if (fs.existsSync(USERS_FILE)) {
     console.error("Failed to load users DB");
   }
 }
-
 if (fs.existsSync(SCHEDULES_FILE)) {
   try {
     schedulesDB = JSON.parse(fs.readFileSync(SCHEDULES_FILE));
@@ -159,7 +164,7 @@ app.post("/login", (req, res) => {
   });
 });
 
-// NEW ROUTE: Frontend silently sends the schedule here whenever it changes
+// SYNC SCHEDULE
 app.post("/sync-schedule", (req, res) => {
   const { email, timezone, reminders, weeklyTasks } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
@@ -308,179 +313,6 @@ setInterval(() => {
     }
   });
 }, 10000);
-
-// ============================================================================
-// 3. WEEKLY BACKUP & RESET ROUTE
-// ============================================================================
-app.post("/send-weekly-backup", async (req, res) => {
-  const { to, htmlReport } = req.body;
-
-  // Dynamic Date Calculations
-  const today = new Date();
-  const currentDay = today.getDay() || 7;
-  const prevSun = new Date(today);
-  prevSun.setDate(today.getDate() - currentDay);
-  const prevMon = new Date(prevSun);
-  prevMon.setDate(prevSun.getDate() - 6);
-
-  const dateRange = `${prevMon.getDate()} – ${prevSun.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}`;
-  const resetDate =
-    today.toLocaleDateString("en-US", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }) + " · 12:00 AM";
-
-  const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
-  const pastDaysOfYear = (today - firstDayOfYear) / 86400000;
-  const currentWeekNum = Math.ceil(
-    (pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7,
-  );
-  const lastWeekNum = currentWeekNum - 1;
-
-  const resetHtml = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LifeTrack — Weekly Data Reset</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@300;400;500;600&display=swap');
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0e0b07; font-family: 'Jost', sans-serif; -webkit-font-smoothing: antialiased; }
-    .wrapper { max-width: 520px; margin: 0 auto; padding: 40px 20px; }
-    .logo { text-align: center; margin-bottom: 28px; }
-    .logo-text { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 300; color: #ede5d8; letter-spacing: 0.08em; }
-    .logo-text span { color: #c49a78; }
-    .logo-line { width: 32px; height: 1px; background: linear-gradient(90deg, transparent, #c49a78, transparent); margin: 10px auto 0; }
-    .card { background: #18150f; border: 1px solid #2a2318; border-radius: 16px; overflow: hidden; }
-    .card-top-bar { height: 3px; background: linear-gradient(90deg, #6b4a2a, #c49a78, #d4b48e, #c49a78, #6b4a2a); }
-    .card-body { padding: 32px 34px 28px; }
-    .alert-icon-wrap { display: flex; justify-content: center; margin-bottom: 22px; }
-    .alert-icon { width: 56px; height: 56px; border-radius: 50%; background: rgba(196,122,106,0.1); border: 1px solid rgba(196,122,106,0.25); display: flex; align-items: center; justify-content: center; font-size: 24px; }
-    .heading { text-align: center; margin-bottom: 20px; }
-    .badge { display: inline-block; font-size: 10px; font-weight: 500; letter-spacing: 0.15em; text-transform: uppercase; color: #d4907c; background: rgba(212,144,124,0.1); border: 1px solid rgba(212,144,124,0.2); padding: 4px 12px; border-radius: 20px; margin-bottom: 12px; }
-    .title { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: #ede5d8; line-height: 1.2; letter-spacing: 0.01em; margin-bottom: 8px; }
-    .title em { font-style: italic; color: #d4907c; }
-    .subtitle { font-size: 13px; font-weight: 300; color: #6e6056; line-height: 1.6; }
-    .divider { height: 1px; background: linear-gradient(90deg, transparent, #2e2820, transparent); margin: 22px 0; }
-    .info-row { display: flex; align-items: center; gap: 14px; background: #201c14; border: 1px solid #2e2820; border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
-    .info-icon { font-size: 22px; flex-shrink: 0; width: 38px; text-align: center; }
-    .info-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #5e5448; margin-bottom: 3px; }
-    .info-val { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 400; color: #ede5d8; }
-    .warning-box { background: rgba(212,144,124,0.07); border: 1px solid rgba(212,144,124,0.2); border-left: 3px solid #d4907c; border-radius: 10px; padding: 14px 16px; margin-bottom: 22px; display: flex; gap: 12px; align-items: flex-start; }
-    .warning-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-    .warning-text { font-size: 13px; color: #c49a78; line-height: 1.6; }
-    .warning-text strong { color: #d4907c; font-weight: 600; }
-    .attachment-label { font-size: 9px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: #5e5448; margin-bottom: 10px; }
-    .attachment-card { display: flex; align-items: center; gap: 14px; background: #201c14; border: 1px solid #2e2820; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; text-decoration: none; transition: border-color 0.2s; cursor: pointer; }
-    .attachment-card:hover { border-color: #c49a78; }
-    .pdf-icon { width: 40px; height: 40px; background: rgba(196,154,120,0.1); border: 1px solid rgba(196,154,120,0.2); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-    .attachment-name { font-size: 13px; font-weight: 500; color: #ede5d8; margin-bottom: 3px; }
-    .attachment-meta { font-size: 11px; color: #5e5448; }
-    .attachment-download { margin-left: auto; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #c49a78; flex-shrink: 0; }
-    .cta-wrap { text-align: center; margin-bottom: 24px; }
-    .cta-btn { display: inline-block; background: linear-gradient(135deg, #b8906a, #c49a78); color: #18150f; font-family: 'Jost', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none; padding: 12px 32px; border-radius: 50px; }
-    .cta-note { display: block; margin-top: 10px; font-size: 11px; color: #5e5448; letter-spacing: 0.04em; }
-    .footer { text-align: center; padding-top: 26px; }
-    .footer-logo { font-family: 'Cormorant Garamond', serif; font-size: 14px; font-weight: 300; color: #3a3028; letter-spacing: 0.08em; margin-bottom: 10px; }
-    .footer-logo span { color: #5e4a38; }
-    .footer-links { font-size: 10px; color: #3a3028; letter-spacing: 0.06em; margin-bottom: 10px; }
-    .footer-links a { color: #5e4a38; text-decoration: none; margin: 0 6px; }
-    .footer-note { font-size: 10px; color: #2e2820; line-height: 1.8; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <div class="logo">
-      <div class="logo-text">life<span>·</span>track</div>
-      <div class="logo-line"></div>
-    </div>
-    <div class="card">
-      <div class="card-top-bar"></div>
-      <div class="card-body">
-        <div class="alert-icon-wrap"><div class="alert-icon">🗑️</div></div>
-
-        <div class="heading">
-          <div class="badge">Weekly Reset</div>
-          <div class="title">Last week's data<br/>has been <em>cleared</em></div>
-          <div class="subtitle">Your Week ${lastWeekNum} records have been removed<br/>to keep your tracker fresh for the new week.</div>
-        </div>
-        <div class="divider"></div>
-
-        <div class="info-row">
-          <div class="info-icon">📅</div>
-          <div>
-            <div class="info-label">Period Deleted</div>
-            <div class="info-val">${dateRange} (Week ${lastWeekNum})</div>
-          </div>
-        </div>
-        <div class="info-row" style="margin-bottom:20px">
-          <div class="info-icon">⏰</div>
-          <div>
-            <div class="info-label">Reset Time</div>
-            <div class="info-val">${resetDate}</div>
-          </div>
-        </div>
-
-        <div class="warning-box">
-          <div class="warning-icon">⚠️</div>
-          <div class="warning-text">
-            <strong>Didn't download your report?</strong> No worries — your last week's full wellness report is attached below. Save it now before this email expires.
-          </div>
-        </div>
-
-        <div class="attachment-label">📎 Attached Report</div>
-        <a class="attachment-card" href="#">
-          <div class="pdf-icon">📄</div>
-          <div>
-            <div class="attachment-name">LifeTrack_Week${lastWeekNum}_Report.html</div>
-            <div class="attachment-meta">${dateRange} · Weekly Wellness Report</div>
-          </div>
-          <div class="attachment-download">↓ Save</div>
-        </a>
-
-        <div class="cta-wrap">
-          <a class="cta-btn" href="#">Start Week ${currentWeekNum} Fresh →</a>
-          <span class="cta-note">Your new weekly tracker is ready and waiting.</span>
-        </div>
-      </div>
-    </div>
-    <div class="footer">
-      <div class="footer-logo">life<span>·</span>track</div>
-      <div class="footer-note">
-        This is an automated reset notification from LifeTrack.<br/>
-        © ${today.getFullYear()} LifeTrack · Your personal wellness companion.
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-  `;
-
-  try {
-    const info = await transporter.sendMail({
-      from: `"LifeTrack" <${process.env.GMAIL_USER}>`,
-      to: to,
-      subject: `Your Week ${lastWeekNum} Report & Reset 🗓️`,
-      html: resetHtml,
-      attachments: [
-        {
-          filename: `LifeTrack_Week${lastWeekNum}_Report.html`,
-          content: Buffer.from(htmlReport).toString("base64"),
-        },
-      ],
-    });
-
-    console.log("Weekly Backup Email sent:", response.id);
-    res.status(200).json({ success: true });
-  } catch (error) {
-    console.error("Failed to send backup:", error);
-    res.status(500).json({ success: false });
-  }
-});
 
 const PORT = process.env.PORT || 8080;
 
