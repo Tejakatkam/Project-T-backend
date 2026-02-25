@@ -167,18 +167,21 @@ app.post("/verify-otp", async (req, res) => {
   }
 });
 // NEW ROUTE: Frontend silently sends the schedule here whenever it changes
-app.post("/sync-schedule", (req, res) => {
+app.post("/sync-schedule", async (req, res) => {
   const { email, timezone, reminders, weeklyTasks } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
 
-  if (!schedulesDB[email]) schedulesDB[email] = {};
-  schedulesDB[email].timezone = timezone;
-  schedulesDB[email].reminders = reminders;
-  schedulesDB[email].weeklyTasks = weeklyTasks;
-  // Save to file so it survives server restarts
-  fs.writeFileSync(DB_FILE, JSON.stringify(userSchedules, null, 2));
-
-  res.status(200).json({ success: true, message: "Schedule Synced!" });
+  try {
+    // We use the 'db' pool we created at the top of the file
+    await db.execute(
+      "UPDATE schedules SET timezone = ?, reminders = ?, weeklyTasks = ? WHERE email = ?",
+      [timezone, JSON.stringify(reminders), JSON.stringify(weeklyTasks), email],
+    );
+    res.status(200).json({ success: true, message: "Schedule Synced!" });
+  } catch (err) {
+    console.error("Sync error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ============================================================================
@@ -285,7 +288,8 @@ setInterval(() => {
 
   console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
 
-  Object.entries(userSchedules).forEach(([email, data]) => {
+  // Change 'userSchedules' to 'schedules'
+  schedules.forEach(async (data) => {
     try {
       if (!data.timezone) return;
 
