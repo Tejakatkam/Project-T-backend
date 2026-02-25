@@ -115,59 +115,49 @@ app.post("/verify-signup", (req, res) => {
 });
 
 // LOGIN
-// LOGIN (Upgraded: Accepts Email OR Username)
 app.post("/login", (req, res) => {
-  const { email, password } = req.body;
-  // 'email' might actually be the username typed by the user
-  const loginIdentifier = email ? email.toLowerCase().trim() : "";
+  console.log("➡️ Login Attempt Received:", req.body);
 
-  if (!loginIdentifier || !password) {
+  // Strictly extract email and password from the frontend request
+  const { email, password } = req.body;
+
+  if (!email || !password) {
     return res
       .status(400)
-      .json({ success: false, error: "Username/Email and password required" });
+      .json({ success: false, error: "Please enter your email and password." });
   }
 
-  // 1. Try to find the user by Email first
-  let user = usersDB[loginIdentifier];
-  let userEmail = loginIdentifier;
+  // Standardize the email format to match the database keys
+  const loginEmail = email.toLowerCase().trim();
+  const user = usersDB[loginEmail];
 
-  // 2. If not found by Email, search the database by Username
+  // 1. Check if the email exists in the database
   if (!user) {
-    const foundEntry = Object.entries(usersDB).find(
-      ([dbEmail, dbUser]) =>
-        dbUser.username && dbUser.username.toLowerCase() === loginIdentifier,
-    );
-
-    if (foundEntry) {
-      userEmail = foundEntry[0]; // The actual email
-      user = foundEntry[1]; // The user data
-    }
-  }
-
-  // 3. If STILL not found, the account doesn't exist (or Railway wiped it)
-  if (!user) {
+    console.log(`❌ Login Failed: Email not found -> ${loginEmail}`);
     return res
       .status(404)
-      .json({ success: false, error: "User not found. Please sign up." });
+      .json({ success: false, error: "Email not found. Please sign up." });
   }
 
-  // 4. Safely verify the password
+  // 2. Check if the password matches (checking user.password or user.pass depending on how signup saved it)
   const storedPassword = user.password || user.pass;
   if (storedPassword !== password) {
+    console.log(`❌ Login Failed: Incorrect password for -> ${loginEmail}`);
     return res
       .status(401)
       .json({ success: false, error: "Incorrect password." });
   }
 
-  // 5. Success! Log them in.
-  const userSchedule = schedulesDB[userEmail] || {};
+  // 3. Success! Log them in.
+  console.log(`✅ Login Success for -> ${loginEmail}`);
+  const userSchedule = schedulesDB[loginEmail] || {};
 
   res.status(200).json({
     success: true,
     message: "Login successful!",
     userData: {
-      username: user.username,
-      email: userEmail,
+      username: user.username || user.name, // Keep sending username back so the app can say "Welcome, Teja!"
+      email: loginEmail,
       reminders: userSchedule.reminders || [],
       weeklyTasks: userSchedule.weeklyTasks || [],
     },
