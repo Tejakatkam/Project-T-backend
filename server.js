@@ -324,37 +324,40 @@ async function sendScheduledEmail(to, subject, text, cleanHeading) {
   `;
 
   try {
-    const response = await resend.emails.send({
-      from: "LifeTrack <onboarding@resend.dev>",
-      to: to,
+    const mailOptions = {
+      from: `"LifeTrack Reminders" <${process.env.GMAIL_USER}>`,
+      to: toEmail,
       subject: subject,
       html: reminderHtml,
-    });
-    console.log(`Auto-Email sent to ${to} for ${subject} | ID:`, response.id);
-  } catch (error) {
-    console.error("Failed to send auto-email:", error);
+    };
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Reminder sent to ${toEmail} for ${taskName}`);
+  } catch (err) {
+    console.error(`❌ Failed to send reminder to ${toEmail}:`, err.message);
   }
 }
 
-// Background Clock Ticks Every 10 Seconds
+// --- 24/7 BACKGROUND CLOCK ---
 let lastCheckedMinute = "";
 
 setInterval(async () => {
   const now = new Date();
-  const currentMinute = now.toISOString().slice(0, 16);
+  const currentMinute = now.toISOString().slice(0, 16); // e.g., "2026-02-25T09:34"
 
+  // Only run the check once per minute to prevent spamming duplicate emails
   if (currentMinute === lastCheckedMinute) return;
   lastCheckedMinute = currentMinute;
 
   console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
 
   try {
-    // 🔥 FETCH FRESH DATA FROM MYSQL
+    // 1. Fetch all user schedules directly from the MySQL database
     const [rows] = await db.execute("SELECT * FROM schedules");
 
     rows.forEach(async (data) => {
-      if (!data.timezone) return;
+      if (!data.timezone || !data.email) return;
 
+      // 2. Convert server UTC time to this specific user's local timezone
       const userTimeStr = now.toLocaleTimeString("en-US", {
         timeZone: data.timezone,
         hour12: false,
@@ -367,32 +370,32 @@ setInterval(async () => {
         weekday: "long",
       });
 
-      // 🔥 PARSE JSON STRINGS FROM MYSQL
+      // 3. Parse the JSON strings stored in MySQL
       const reminders =
         typeof data.reminders === "string"
           ? JSON.parse(data.reminders)
-          : data.reminders;
+          : data.reminders || [];
       const weeklyTasks =
         typeof data.weeklyTasks === "string"
           ? JSON.parse(data.weeklyTasks)
-          : data.weeklyTasks;
+          : data.weeklyTasks || [];
 
-      // Check Daily Habit Timers
-      (reminders || []).forEach((r) => {
+      // 4. Check Daily Habit Timers
+      reminders.forEach((r) => {
         (r.timers || []).forEach((t) => {
           if (t.time === userTimeStr) {
             sendScheduledEmail(
               data.email,
               `⏰ Time for ${r.habitName}`,
-              t.label || `Time for your ${r.habitName} routine!`,
+              t.label || `It is time to complete your ${r.habitName} routine!`,
               r.habitName,
             );
           }
         });
       });
 
-      // Check Weekly Task Timers
-      (weeklyTasks || []).forEach((task) => {
+      // 5. Check Weekly Task Timers
+      weeklyTasks.forEach((task) => {
         if (
           task.day === userDayStr &&
           task.reminderTime === userTimeStr &&
@@ -401,16 +404,16 @@ setInterval(async () => {
           sendScheduledEmail(
             data.email,
             `📋 Weekly Task: ${task.name}`,
-            `Don't forget: ${task.name}`,
+            `Don't forget to complete your weekly task today!`,
             task.name,
           );
         }
       });
     });
   } catch (err) {
-    console.error("❌ Background Clock Error:", err.message);
+    console.error("⏱️ Clock Database Error:", err.message);
   }
-}, 10000);
+}, 10000); // Ticks every 10 seconds
 
 // ============================================================================
 // 3. WEEKLY BACKUP & RESET ROUTE
