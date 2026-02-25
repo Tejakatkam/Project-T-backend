@@ -246,7 +246,7 @@ async function sendEmail(to, subject, text, heading) {
     if (result.success) {
       console.log(`✅ Relay Email successfully requested for ${to}`);
     } else {
-      console.error("❌ Google Script Relay returned an error:", result.error);
+      console.error("❌ Google Script Relay  an error:", result.error);
     }
   } catch (error) {
     console.error("❌ Failed to reach Google Script:", error);
