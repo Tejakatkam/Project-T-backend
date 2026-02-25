@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.get("/", (req, res) => {
-  res.send("LifeTrack Backend is successfully running! 🚀");
+  res.send("LifeTrack Backend is successfully running with healthy way! 🚀");
 });
 
 // 1. CONFIGURE GMAIL TRANSPORTER (Bypass Port 465 Block)
