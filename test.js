@@ -13,175 +13,139 @@ app.use(cors());
 // ✅ Parse JSON (Increased limit for the HTML attachment)
 app.use(express.json({ limit: "10mb" }));
 
-// HEALTH CHECK: This lets you open the URL in your browser to see if it works
+// HEALTH CHECK
 app.get("/", (req, res) => {
   res.send("LifeTrack Backend is successfully running! 🚀");
 });
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// ==========================================
-// 1. MYSQL CONNECTION POOL
-// ==========================================
-const db = mysql.createPool({
-  host: process.env.MYSQLHOST,
-  user: process.env.MYSQLUSER,
-  password: process.env.MYSQLPASSWORD,
-  database: process.env.MYSQLDATABASE,
-  port: process.env.MYSQLPORT || 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-});
+// ============================================================================
+// 1. DUAL DATABASE SETUP (Separating Auth from App Data)
+// ============================================================================
+const USERS_FILE = "./users.json";
+const SCHEDULES_FILE = "./schedules.json";
 
-// Create tables automatically if they don't exist
-const initDB = async () => {
+let usersDB = {};
+let schedulesDB = {};
+
+// Load existing data when server starts
+if (fs.existsSync(USERS_FILE)) {
   try {
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(50) NOT NULL UNIQUE,
-        email VARCHAR(100) NOT NULL UNIQUE,
-        password VARCHAR(255) NOT NULL,
-        is_verified BOOLEAN DEFAULT FALSE,
-        otp_code VARCHAR(6),
-        otp_expires_at TIMESTAMP NULL
-      )
-    `);
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS schedules (
-        email VARCHAR(100) PRIMARY KEY,
-        timezone VARCHAR(50),
-        reminders JSON,
-        weeklyTasks JSON
-      )
-    `);
-    console.log("✅ MySQL Tables Ready");
-  } catch (err) {
-    console.error("❌ Database Init Error:", err);
+    usersDB = JSON.parse(fs.readFileSync(USERS_FILE));
+  } catch (e) {
+    console.error("Failed to load users DB");
   }
-};
-initDB();
+}
 
-// ==========================================
-// 2. AUTHENTICATION (Scenario A, B, C)
-// ==========================================
+if (fs.existsSync(SCHEDULES_FILE)) {
+  try {
+    schedulesDB = JSON.parse(fs.readFileSync(SCHEDULES_FILE));
+  } catch (e) {
+    console.error("Failed to load schedules DB");
+  }
+}
 
-app.post("/signup", async (req, res) => {
+// ============================================================================
+// 2. ACCOUNT AUTHENTICATION ROUTES
+// ============================================================================
+app.post("/signup", (req, res) => {
   const { username, email, password } = req.body;
 
-  try {
-    // Check for duplicate email (Person C scenario)
-    const [emailCheck] = await db.execute(
-      "SELECT id FROM users WHERE email = ?",
-      [email],
-    );
-    if (emailCheck.length > 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "This email is already registered." });
-    }
-
-    // Check for duplicate username (Person B scenario)
-    const [userCheck] = await db.execute(
-      "SELECT id FROM users WHERE username = ?",
-      [username],
-    );
-    if (userCheck.length > 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "That username is already taken." });
-    }
-
-    // Save to MySQL
-    await db.execute(
-      "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-      [username, email, password], // Note: In production, hash this password!
-    );
-
-    // Initialize schedule
-    await db.execute(
-      "INSERT INTO schedules (email, reminders, weeklyTasks) VALUES (?, '[]', '[]')",
-      [email],
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Account created! Now verify your email.",
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  if (!username || !email || !password) {
+    return res
+      .status(400)
+      .json({ success: false, error: "All fields are required" });
   }
+
+  // Check for duplicate email
+  if (usersDB[email]) {
+    return res
+      .status(400)
+      .json({ success: false, error: "This email is already registered." });
+  }
+
+  // Check for duplicate username
+  const usernameExists = Object.values(usersDB).some(
+    (u) => u.username === username,
+  );
+  if (usernameExists) {
+    return res
+      .status(400)
+      .json({ success: false, error: "That username is already taken." });
+  }
+
+  // Save credentials to usersDB
+  usersDB[email] = { username, password };
+  fs.writeFileSync(USERS_FILE, JSON.stringify(usersDB, null, 2));
+
+  // Initialize an empty schedule in schedulesDB for the new user
+  schedulesDB[email] = { timezone: "", reminders: [], weeklyTasks: [] };
+  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(schedulesDB, null, 2));
+
+  res
+    .status(200)
+    .json({ success: true, message: "Account created successfully!" });
 });
 
-// ==========================================
-// 3. OTP VERIFICATION SYSTEM
-// ==========================================
+app.post("/login", (req, res) => {
+  const { email, password } = req.body;
 
-app.post("/send-otp", async (req, res) => {
-  const { email } = req.body;
-  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
-  const expires = new Date(Date.now() + 10 * 60000); // 10 mins
-
-  try {
-    await db.execute(
-      "UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE email = ?",
-      [otp, expires, email],
-    );
-
-    await resend.emails.send({
-      from: "LifeTrack <onboarding@resend.dev>",
-      to: email,
-      subject: "Your Verification Code",
-      html: `<p>Your LifeTrack OTP is: <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
-    });
-
-    res.json({ success: true, message: "OTP Sent!" });
-  } catch (err) {
-    res.status(500).json({ success: false, error: "Failed to send OTP" });
+  if (!email || !password) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Email and password required" });
   }
+
+  const user = usersDB[email];
+
+  if (!user) {
+    return res
+      .status(404)
+      .json({ success: false, error: "User not found. Please sign up." });
+  }
+  if (user.password !== password) {
+    return res
+      .status(401)
+      .json({ success: false, error: "Incorrect password." });
+  }
+
+  // Fetch their application data from schedulesDB
+  const userSchedule = schedulesDB[email] || {};
+
+  res.status(200).json({
+    success: true,
+    message: "Login successful!",
+    userData: {
+      username: user.username,
+      email: email,
+      reminders: userSchedule.reminders || [],
+      weeklyTasks: userSchedule.weeklyTasks || [],
+    },
+  });
 });
 
-app.post("/verify-otp", async (req, res) => {
-  const { email, otp } = req.body;
-
-  try {
-    const [rows] = await db.execute(
-      "SELECT * FROM users WHERE email = ? AND otp_code = ? AND otp_expires_at > NOW()",
-      [email, otp],
-    );
-
-    if (rows.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Invalid or expired OTP" });
-    }
-
-    await db.execute(
-      "UPDATE users SET is_verified = TRUE, otp_code = NULL WHERE email = ?",
-      [email],
-    );
-    res.json({ success: true, message: "Email verified successfully!" });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-// NEW ROUTE: Frontend silently sends the schedule here whenever it changes
+// ============================================================================
+// 3. SCHEDULE SYNC ROUTE
+// ============================================================================
 app.post("/sync-schedule", (req, res) => {
   const { email, timezone, reminders, weeklyTasks } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
 
+  // Update only the schedule data
   if (!schedulesDB[email]) schedulesDB[email] = {};
   schedulesDB[email].timezone = timezone;
   schedulesDB[email].reminders = reminders;
   schedulesDB[email].weeklyTasks = weeklyTasks;
-  // Save to file so it survives server restarts
-  fs.writeFileSync(DB_FILE, JSON.stringify(userSchedules, null, 2));
+
+  // Save specifically to the schedules file
+  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(schedulesDB, null, 2));
 
   res.status(200).json({ success: true, message: "Schedule Synced!" });
 });
 
 // ============================================================================
-// 2. THE 24/7 BACKGROUND CLOCK (Sends Daily & Weekly Task Reminders)
+// 4. THE 24/7 BACKGROUND CLOCK
 // ============================================================================
 async function sendScheduledEmail(to, subject, text, cleanHeading) {
   const reminderHtml = `
@@ -279,16 +243,16 @@ setInterval(() => {
   const now = new Date();
   const currentMinute = now.toISOString().slice(0, 16);
 
-  if (currentMinute === lastCheckedMinute) return; // Ensure it only sends once per minute
+  if (currentMinute === lastCheckedMinute) return;
   lastCheckedMinute = currentMinute;
 
   console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
 
-  Object.entries(userSchedules).forEach(([email, data]) => {
+  // IMPORTANT: Now iterating over schedulesDB instead of userSchedules
+  Object.entries(schedulesDB).forEach(([email, data]) => {
     try {
       if (!data.timezone) return;
 
-      // Converts server time into the User's exact local timezone
       const userTimeStr = now.toLocaleTimeString("en-US", {
         timeZone: data.timezone,
         hour12: false,
@@ -299,6 +263,7 @@ setInterval(() => {
         timeZone: data.timezone,
         weekday: "long",
       });
+
       console.log(
         `👉 Checking user: ${email} | Calculated Time: ${userTimeStr}`,
       );
@@ -340,12 +305,11 @@ setInterval(() => {
 }, 10000);
 
 // ============================================================================
-// 3. WEEKLY BACKUP & RESET ROUTE
+// 5. WEEKLY BACKUP & RESET ROUTE
 // ============================================================================
 app.post("/send-weekly-backup", async (req, res) => {
   const { to, htmlReport } = req.body;
 
-  // Dynamic Date Calculations
   const today = new Date();
   const currentDay = today.getDay() || 7;
   const prevSun = new Date(today);
@@ -513,7 +477,6 @@ app.post("/send-weekly-backup", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-
 app.listen(PORT, "0.0.0.0", () => {
   console.log("🚀 Server running on port", PORT);
 });
