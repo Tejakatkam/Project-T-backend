@@ -594,27 +594,16 @@ app.post("/send-weekly-backup", async (req, res) => {
   }
 });
 
+// --- SERVER STARTUP ---
 const PORT = process.env.PORT || 8080;
 
+// 1. Start the server INSTANTLY. Do not wait for the database!
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("🚀 Server running on port", PORT);
-  initDB();
+  console.log(`🚀 Server successfully awake and listening on port ${PORT}`);
+
+  // 2. NOW call the database connection in the background.
+  // We use .catch() to handle errors without crashing the server startup.
+  initDB().catch((err) => {
+    console.error("❌ Database connection failed during startup:", err);
+  });
 });
-
-// // --- SERVER STARTUP ---
-// // 1. Grab the port Railway gives us, or use 8080 locally
-// const PORT = process.env.PORT || 8080;
-
-// // 2. Start the server INSTANTLY so Railway passes the network check.
-// // Using '0.0.0.0' is required by Railway to route traffic properly.
-// app.listen(PORT, "0.0.0.0", () => {
-//   console.log(`🚀 Server successfully awake and listening on port ${PORT}`);
-
-//   // 3. Initialize the database AFTER the server is already running
-//   initDB().catch((err) => {
-//     console.error(
-//       "Database connection failed, but server is still up:",
-//       err.message,
-//     );
-//   });
-// });
