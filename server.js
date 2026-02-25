@@ -12,22 +12,19 @@ app.get("/", (req, res) => {
   res.send("LifeTrack Backend is successfully running! 🚀");
 });
 
-// 1. CONFIGURE GMAIL TRANSPORTER
-// 1. CONFIGURE GMAIL TRANSPORTER (EXPLICIT SMTP)
+// 1. CONFIGURE GMAIL TRANSPORTER (Bypass Port 465 Block)
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true, // Use SSL/TLS
+  port: 587, // Changed from 465
+  secure: false, // MUST be false for port 587 (it upgrades to secure automatically)
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_PASS,
   },
-  // Add this to prevent connection drops in cloud environments
   tls: {
     rejectUnauthorized: false,
   },
 });
-
 // ============================================================================
 // 1. SIMPLE DATABASE (Stores schedules so they work when app is closed)
 // ============================================================================
