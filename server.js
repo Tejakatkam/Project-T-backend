@@ -13,18 +13,7 @@ app.get("/", (req, res) => {
 });
 
 // 1. CONFIGURE GMAIL TRANSPORTER (Bypass Port 465 Block)
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587, // Changed from 465
-  secure: false, // MUST be false for port 587 (it upgrades to secure automatically)
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
+
 // ============================================================================
 // 1. SIMPLE DATABASE (Stores schedules so they work when app is closed)
 // ============================================================================
@@ -181,6 +170,14 @@ app.post("/sync-schedule", (req, res) => {
 // 3. EMAIL HELPER FUNCTION
 // ============================================================================
 async function sendEmail(to, subject, text, heading) {
+  const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL;
+
+  if (!GOOGLE_SCRIPT_URL) {
+    console.error(
+      "❌ Email failed: Missing GOOGLE_SCRIPT_URL in Railway variables.",
+    );
+    return;
+  }
   const reminderHtml = `
 <!DOCTYPE html>
 <html lang="en">
@@ -235,17 +232,24 @@ async function sendEmail(to, subject, text, heading) {
   `;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"LifeTrack" <${process.env.GMAIL_USER}>`,
-      to: to,
-      subject: subject,
-      html: reminderHtml,
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: to,
+        subject: subject,
+        html: reminderHtml,
+      }),
     });
-    console.log(
-      `✅ Email sent to ${to} for ${subject} | ID: ${info.messageId}`,
-    );
+
+    const result = await response.json();
+    if (result.success) {
+      console.log(`✅ Relay Email successfully requested for ${to}`);
+    } else {
+      console.error("❌ Google Script Relay returned an error:", result.error);
+    }
   } catch (error) {
-    console.error("❌ Failed to send email:", error);
+    console.error("❌ Failed to reach Google Script:", error);
   }
 }
 
