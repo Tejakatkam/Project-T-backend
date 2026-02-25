@@ -63,6 +63,46 @@ const initDB = async () => {
 };
 initDB();
 
+// --- LOGIN ROUTE ---
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    // 1. Search MySQL for the username
+    const [users] = await db.execute("SELECT * FROM users WHERE username = ?", [
+      username,
+    ]);
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, error: "User not found." });
+    }
+
+    const user = users[0];
+
+    // 2. Compare the typed password with the hashed password in the DB
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Incorrect password." });
+    }
+
+    // 3. Check if they finished the OTP step
+    if (!user.is_verified) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Please verify your email first." });
+    }
+
+    // 4. Send the green light to React
+    res.json({ success: true, email: user.email });
+  } catch (err) {
+    console.error("Login Database Error:", err);
+    res
+      .status(500)
+      .json({ success: false, error: "Server error during login." });
+  }
+});
 // ==========================================
 // 2. AUTHENTICATION (Scenario A, B, C)
 // ==========================================
