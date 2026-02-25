@@ -13,7 +13,7 @@ app.use(cors());
 // ✅ Parse JSON (Increased limit for the HTML attachment)
 app.use(express.json({ limit: "10mb" }));
 
-// HEALTH CHECK
+// HEALTH CHECK: This lets you open the URL in your browser to see if it works
 app.get("/", (req, res) => {
   res.send("LifeTrack Backend is successfully running! 🚀");
 });
@@ -21,7 +21,7 @@ app.get("/", (req, res) => {
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ============================================================================
-// 1. DUAL DATABASE SETUP (Separating Auth from App Data)
+// 1. SIMPLE DATABASE (Stores schedules so they work when app is closed)
 // ============================================================================
 const USERS_FILE = "./users.json";
 const SCHEDULES_FILE = "./schedules.json";
@@ -29,7 +29,7 @@ const SCHEDULES_FILE = "./schedules.json";
 let usersDB = {};
 let schedulesDB = {};
 
-// Load existing data when server starts
+// Load existing schedules when server starts
 if (fs.existsSync(USERS_FILE)) {
   try {
     usersDB = JSON.parse(fs.readFileSync(USERS_FILE));
@@ -46,9 +46,6 @@ if (fs.existsSync(SCHEDULES_FILE)) {
   }
 }
 
-// ============================================================================
-// 2. ACCOUNT AUTHENTICATION ROUTES
-// ============================================================================
 app.post("/signup", (req, res) => {
   const { username, email, password } = req.body;
 
@@ -124,28 +121,23 @@ app.post("/login", (req, res) => {
     },
   });
 });
-
-// ============================================================================
-// 3. SCHEDULE SYNC ROUTE
-// ============================================================================
+// NEW ROUTE: Frontend silently sends the schedule here whenever it changes
 app.post("/sync-schedule", (req, res) => {
   const { email, timezone, reminders, weeklyTasks } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
 
-  // Update only the schedule data
   if (!schedulesDB[email]) schedulesDB[email] = {};
   schedulesDB[email].timezone = timezone;
   schedulesDB[email].reminders = reminders;
   schedulesDB[email].weeklyTasks = weeklyTasks;
-
-  // Save specifically to the schedules file
-  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(schedulesDB, null, 2));
+  // Save to file so it survives server restarts
+  fs.writeFileSync(DB_FILE, JSON.stringify(userSchedules, null, 2));
 
   res.status(200).json({ success: true, message: "Schedule Synced!" });
 });
 
 // ============================================================================
-// 4. THE 24/7 BACKGROUND CLOCK
+// 2. THE 24/7 BACKGROUND CLOCK (Sends Daily & Weekly Task Reminders)
 // ============================================================================
 async function sendScheduledEmail(to, subject, text, cleanHeading) {
   const reminderHtml = `
@@ -243,16 +235,16 @@ setInterval(() => {
   const now = new Date();
   const currentMinute = now.toISOString().slice(0, 16);
 
-  if (currentMinute === lastCheckedMinute) return;
+  if (currentMinute === lastCheckedMinute) return; // Ensure it only sends once per minute
   lastCheckedMinute = currentMinute;
 
   console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
 
-  // IMPORTANT: Now iterating over schedulesDB instead of userSchedules
-  Object.entries(schedulesDB).forEach(([email, data]) => {
+  Object.entries(userSchedules).forEach(([email, data]) => {
     try {
       if (!data.timezone) return;
 
+      // Converts server time into the User's exact local timezone
       const userTimeStr = now.toLocaleTimeString("en-US", {
         timeZone: data.timezone,
         hour12: false,
@@ -263,7 +255,6 @@ setInterval(() => {
         timeZone: data.timezone,
         weekday: "long",
       });
-
       console.log(
         `👉 Checking user: ${email} | Calculated Time: ${userTimeStr}`,
       );
@@ -305,11 +296,12 @@ setInterval(() => {
 }, 10000);
 
 // ============================================================================
-// 5. WEEKLY BACKUP & RESET ROUTE
+// 3. WEEKLY BACKUP & RESET ROUTE
 // ============================================================================
 app.post("/send-weekly-backup", async (req, res) => {
   const { to, htmlReport } = req.body;
 
+  // Dynamic Date Calculations
   const today = new Date();
   const currentDay = today.getDay() || 7;
   const prevSun = new Date(today);
@@ -477,6 +469,7 @@ app.post("/send-weekly-backup", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log("🚀 Server running on port", PORT);
 });

@@ -279,42 +279,52 @@ async function sendScheduledEmail(to, subject, text, cleanHeading) {
 // Background Clock Ticks Every 10 Seconds
 let lastCheckedMinute = "";
 
-setInterval(() => {
+// Background Clock Ticks Every 10 Seconds
+setInterval(async () => {
   const now = new Date();
   const currentMinute = now.toISOString().slice(0, 16);
 
-  if (currentMinute === lastCheckedMinute) return; // Ensure it only sends once per minute
+  if (currentMinute === lastCheckedMinute) return;
   lastCheckedMinute = currentMinute;
 
   console.log(`\n⏱️ CLOCK TICK: ${currentMinute} UTC`);
 
-  // Change 'userSchedules' to 'schedules'
-  schedules.forEach(async (data) => {
-    try {
+  try {
+    // 🔥 FIX: You must actually fetch the data from MySQL first!
+    const [schedulesFromDB] = await db.execute("SELECT * FROM schedules");
+
+    schedulesFromDB.forEach(async (data) => {
       if (!data.timezone) return;
 
-      // Converts server time into the User's exact local timezone
+      // Converts server time into User's local timezone
       const userTimeStr = now.toLocaleTimeString("en-US", {
         timeZone: data.timezone,
         hour12: false,
         hour: "2-digit",
         minute: "2-digit",
       });
+
       const userDayStr = now.toLocaleDateString("en-US", {
         timeZone: data.timezone,
         weekday: "long",
       });
-      console.log(
-        `👉 Checking user: ${email} | Calculated Time: ${userTimeStr}`,
-      );
+
+      // 🔥 FIX: MySQL stores JSON as strings, so we must parse them
+      const reminders =
+        typeof data.reminders === "string"
+          ? JSON.parse(data.reminders)
+          : data.reminders;
+      const weeklyTasks =
+        typeof data.weeklyTasks === "string"
+          ? JSON.parse(data.weeklyTasks)
+          : data.weeklyTasks;
 
       // Check Daily Habit Timers
-      (data.reminders || []).forEach((r) => {
+      (reminders || []).forEach((r) => {
         (r.timers || []).forEach((t) => {
-          console.log(`   - Comparing with saved timer: ${t.time}`);
           if (t.time === userTimeStr) {
             sendScheduledEmail(
-              email,
+              data.email,
               `⏰ Time for ${r.habitName}`,
               t.label || `Time for your ${r.habitName} routine!`,
               r.habitName,
@@ -324,24 +334,24 @@ setInterval(() => {
       });
 
       // Check Weekly Task Timers
-      (data.weeklyTasks || []).forEach((task) => {
+      (weeklyTasks || []).forEach((task) => {
         if (
           task.day === userDayStr &&
           task.reminderTime === userTimeStr &&
           !task.doneThisWeek
         ) {
           sendScheduledEmail(
-            email,
+            data.email,
             `📋 Weekly Task: ${task.name}`,
-            `Don't forget to complete your task: ${task.name}`,
+            `Don't forget: ${task.name}`,
             task.name,
           );
         }
       });
-    } catch (err) {
-      console.error("Error processing user schedule:", err);
-    }
-  });
+    });
+  } catch (err) {
+    console.error("Error in background clock:", err);
+  }
 }, 10000);
 
 // ============================================================================
