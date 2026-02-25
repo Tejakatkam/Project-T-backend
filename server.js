@@ -186,7 +186,7 @@ async function sendEmail(to, subject, text, heading) {
 
   if (!GOOGLE_SCRIPT_URL) {
     console.error(
-      "❌ Email failed: Missing GOOGLE_SCRIPT_URL in Railway variables.",
+      "❌ Email failed: Missing GOOGLE_SCRIPT_URL yes in Railway variables.",
     );
     return;
   }
