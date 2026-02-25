@@ -8,6 +8,16 @@ const fs = require("fs");
 const mysql = require("mysql2/promise");
 const app = express();
 
+const nodemailer = require("nodemailer");
+
+// Create the email sender
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
+  },
+});
 // ✅ Enable CORS properly
 app.use(cors());
 
@@ -159,25 +169,36 @@ app.post("/signup", async (req, res) => {
 
 app.post("/send-otp", async (req, res) => {
   const { email } = req.body;
-  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
-  const expires = new Date(Date.now() + 10 * 60000); // 10 mins
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
   try {
-    await db.execute(
-      "UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE email = ?",
-      [otp, expires, email],
-    );
+    // 1. Save to MySQL
+    await db.execute("UPDATE users SET otp_code = ? WHERE email = ?", [
+      otp,
+      email,
+    ]);
 
-    await resend.emails.send({
-      from: "LifeTrack <onboarding@resend.dev>",
-      to: email,
-      subject: "Your Verification Code",
-      html: `<p>Your LifeTrack OTP is: <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
-    });
+    // 2. Send via Gmail to ANY user
+    const mailOptions = {
+      from: `"LifeTrack App" <${process.env.GMAIL_USER}>`,
+      to: email, // This will now go to ANY email address!
+      subject: "Verify your LifeTrack Account",
+      html: `
+        <div style="font-family: sans-serif; padding: 20px;">
+          <h2>Welcome to LifeTrack!</h2>
+          <p>Your verification code is: <strong style="font-size: 24px; color: #d4af37;">${otp}</strong></p>
+          <p>Please enter this code in the app to complete your registration.</p>
+        </div>
+      `,
+    };
 
-    res.json({ success: true, message: "OTP Sent!" });
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ OTP Email successfully sent to ${email}`);
+
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: "Failed to send OTP" });
+    console.error("❌ Gmail Error:", err);
+    res.status(500).json({ success: false, error: "Failed to send email" });
   }
 });
 
