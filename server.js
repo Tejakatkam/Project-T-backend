@@ -156,7 +156,8 @@ app.post("/login", (req, res) => {
     success: true,
     message: "Login successful!",
     userData: {
-      username: user.username || user.name, // Keep sending username back so the app can say "Welcome, Teja!"
+      ...user, // 👈 THE MAGIC FIX: This grabs all the registration details (age, weight, height, goal)
+      username: user.username || user.name,
       email: loginEmail,
       reminders: userSchedule.reminders || [],
       weeklyTasks: userSchedule.weeklyTasks || [],
